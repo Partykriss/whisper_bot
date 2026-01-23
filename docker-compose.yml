@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres:15
+    container_name: whisper_postgres
+    restart: always
+    environment:
+      # These credentials must match your .env file
+      POSTGRES_USER: whisper
+      POSTGRES_PASSWORD: whisperpass
+      POSTGRES_DB: whisper_db
+    ports:
+      - "5001:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
