@@ -13,5 +13,17 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+
+  bot:
+    build: .
+    container_name: whisper_bot
+    restart: always
+    depends_on:
+      - db
+    env_file:
+      - .env
+    volumes:
+      - ./downloads:/code/downloads
+
 volumes:
   postgres_data:
