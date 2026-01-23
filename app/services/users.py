@@ -54,6 +54,9 @@ def subtract_user_seconds(telegram_id: int, duration_seconds: float):
         user = db.query(User).filter(User.telegram_id == telegram_id).first()
         if not user:
             return
+        plan_name = user.plan.value if hasattr(user.plan, "value") else str(user.plan)
+        if plan_name == "admin":
+            return
         current = user.seconds or 0
         user.seconds = int(current) - int(round(duration_seconds))
         db.commit()
