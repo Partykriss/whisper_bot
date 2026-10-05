@@ -1,5 +1,7 @@
 # Whisper Telegram Bot
 
+See [local installation and verification](docs/setup.md) for this workspace setup.
+
 Telegram bot that accepts voice/audio/video messages, transcribes them with OpenAI Whisper, and stores results in Postgres. Cached results are returned by `file_unique_id`.
 
 ## Features
