@@ -1,6 +1,7 @@
 import os
 import enum
 from dotenv import load_dotenv
+from app.media.config import SETTINGS as MEDIA_SETTINGS
 
 load_dotenv()
 
@@ -29,7 +30,7 @@ PLAN_LIMITS = {
     PlanType.pro: PRO_LIMIT_SEC
 }
 
-DOWNLOADS_DIR = "downloads"
+DOWNLOADS_DIR = MEDIA_SETTINGS.downloads_dir
 
 # --- Payments (Telegram Stars) ---
 PRICE_PLUS_STARS = int(os.getenv("PRICE_PLUS_STARS", 0))

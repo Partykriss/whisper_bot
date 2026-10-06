@@ -1,5 +1,8 @@
 # Base installation
 
+This describes the imported baseline. See [media processing](media.md) for the
+current functionality, new migration and deployment instructions.
+
 The project was imported from https://github.com/Partykriss/whisper_bot,
 branch `master`, commit `b26554eb5f857dd6c7aaecdd4464a9ce6210a083`.
 The upstream Git history and `origin` remote are preserved. Application behavior
@@ -37,7 +40,7 @@ the current transcription code sends files directly to OpenAI and does not
 perform FFmpeg conversion. The Compose database credentials are development
 defaults and must be changed before production deployment.
 
-## Current behavior and limits
+## Imported baseline behavior and limits
 
 - Telegram voice, audio, video, and video-note messages are accepted.
 - Transcription uses OpenAI `whisper-1`; results are cached in PostgreSQL.

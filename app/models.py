@@ -21,6 +21,7 @@ class User(Base):
     plan = Column(Enum(PlanType), default=PlanType.trial, nullable=False)
     # Optional raw seconds field for future logic
     seconds = Column(Integer, nullable=True)
+    reserved_seconds = Column(Integer, nullable=False, default=0, server_default="0")
     # Paid plan expiration (null for trial)
     paid_until = Column(DateTime, nullable=True)
     registered_at = Column(DateTime, default=datetime.utcnow)
@@ -38,6 +39,9 @@ class Task(Base):
     user_id = Column(BigInteger, ForeignKey("users.telegram_id"), index=True)
     chat_id = Column(BigInteger, index=True, nullable=True)
     file_id = Column(String, nullable=True)
+    source_url = Column(String, nullable=True)
+    reserved_seconds = Column(Integer, nullable=False, default=0, server_default="0")
+    progress = Column(Integer, nullable=False, default=0, server_default="0")
     file_unique_id = Column(String, unique=True, index=True)
     status = Column(String, default="pending")
     result_text = Column(String, nullable=True)

@@ -1,11 +1,16 @@
 # Whisper Telegram Bot
 
-See [local installation and verification](docs/setup.md) for this workspace setup.
+See [installation](docs/setup.md), [media processing and deployment](docs/media.md),
+and [architecture decisions](docs/adr/README.md).
 
-Telegram bot that accepts voice/audio/video messages, transcribes them with OpenAI Whisper, and stores results in Postgres. Cached results are returned by `file_unique_id`.
+Telegram bot that transcribes voice/audio/video messages, media documents, direct media links and public YouTube videos with OpenAI Whisper. Results and balance reservations are stored in Postgres.
 
 ## Features
-- Voice, Audio, Video, and Video Note support
+- Voice, Audio, Video, Video Note and media document support
+- Direct HTTP(S) media links and public YouTube audio downloads
+- FFmpeg audio extraction and chunking for large recordings
+- Optional local Telegram Bot API for files larger than 20 MB
+- Atomic duration reservations before transcription; long results as text files
 - OpenAI Whisper transcription (`whisper-1`)
 - Postgres cache + Alembic migrations
 - Telegram Stars payments (Plus/Pro)
@@ -29,7 +34,7 @@ pip install -r requirements.txt
 
 ### 2) Start database
 ```bash
-docker compose up -d
+docker compose up -d db
 ```
 
 ### 3) Create `.env`
@@ -59,18 +64,22 @@ python main.py
 ```
 
 ## How it works
-1. Bot receives media and checks cache by `file_unique_id`.
-2. If cache hit, returns transcription.
-3. Otherwise checks balance (seconds). If insufficient, stores task as `pending_payment` and offers payment.
-4. After payment, pending transcription is processed automatically.
-5. Balance is reduced by media duration.
+1. Bot receives a Telegram file or media link and checks its user-scoped cache.
+2. Known source limits are checked before downloading; actual duration is probed afterward.
+3. Balance is atomically reserved before OpenAI calls. Insufficient balance creates a `pending_payment` task.
+4. FFmpeg extracts and splits audio; OpenAI transcribes ordered chunks.
+5. Completion stores the result and consumes reserved time once; failure releases the reservation.
+6. Successful payment revalidates and resumes the oldest pending transcription.
 
 ## Project Structure
 - `main.py` — handlers and orchestration
+- `app/media/` — source adapters, FFmpeg preparation, processing configuration
 - `app/services/`
   - `billing.py` — periods, limits, warnings
   - `tasks.py` — task persistence
-  - `transcription.py` — transcription pipeline
+  - `transcription.py` — OpenAI adapter
+  - `media_jobs.py` — media processing orchestration
+  - `media_store.py` — job lifecycle and atomic reservations
   - `users.py` — user/balance logic
 - `app/ui/messages.py` — formatting and warnings
 - `app/models.py` — SQLAlchemy models

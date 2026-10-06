@@ -1,0 +1,10 @@
+.git
+.venv
+.env
+.env.*
+downloads
+__pycache__
+*.pyc
+.aws
+.codex
+.agents

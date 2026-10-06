@@ -11,7 +11,7 @@ def is_paid_plan(plan_name: str) -> bool:
 def get_or_create_user(telegram_id: int) -> User:
     """Fetch user by telegram_id or create a new one."""
     with SessionLocal() as db:
-        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        user = db.query(User).filter(User.telegram_id == telegram_id).with_for_update().first()
         if user:
             if user.seconds is None:
                 plan_name = user.plan.value if hasattr(user.plan, "value") else str(user.plan)
@@ -39,7 +39,7 @@ def get_or_create_user(telegram_id: int) -> User:
 def set_user_plan(telegram_id: int, plan_name: str):
     """Set user plan and reset usage/period."""
     with SessionLocal() as db:
-        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        user = db.query(User).filter(User.telegram_id == telegram_id).with_for_update().first()
         if not user:
             return
         user.plan = plan_name
@@ -51,7 +51,7 @@ def set_user_plan(telegram_id: int, plan_name: str):
 def subtract_user_seconds(telegram_id: int, duration_seconds: float):
     """Subtract seconds from user's balance."""
     with SessionLocal() as db:
-        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        user = db.query(User).filter(User.telegram_id == telegram_id).with_for_update().first()
         if not user:
             return
         plan_name = user.plan.value if hasattr(user.plan, "value") else str(user.plan)
@@ -65,7 +65,7 @@ def subtract_user_seconds(telegram_id: int, duration_seconds: float):
 def apply_payment_to_user(telegram_id: int, plan_name: str):
     """Apply payment: add plan seconds to balance and update period."""
     with SessionLocal() as db:
-        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        user = db.query(User).filter(User.telegram_id == telegram_id).with_for_update().first()
         if not user:
             return
         limit_sec = get_plan_limit_seconds(plan_name)
