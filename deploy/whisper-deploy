@@ -1,0 +1,4 @@
+#!/bin/sh
+# Installed root-owned. Never evaluate runner-controlled shell startup files.
+exec /usr/bin/env -i PATH=/usr/local/bin:/usr/bin:/bin \
+  /usr/bin/python3 -I /usr/local/lib/whisper/deployment.py "$@"

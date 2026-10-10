@@ -8,3 +8,12 @@ __pycache__
 .aws
 .codex
 .agents
+secrets/
+deploy/
+tests/
+docs/
+.github/
+*.md
+*.dump
+*.pem
+*.key

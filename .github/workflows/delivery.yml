@@ -1,0 +1,110 @@
+name: Whisper delivery
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:15-bookworm@sha256:d4a8e1f88f475ee3e0137fa89d21ebc59f6c6ab16bf369ee92907607cc3455ae
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: whisper_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U test -d whisper_test"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate Compose without production secrets
+        run: |
+          python3 deploy/ci_config.py "$RUNNER_TEMP/whisper-env" > "$RUNNER_TEMP/compose.env"
+          docker compose --env-file "$RUNNER_TEMP/compose.env" -f compose.yaml --profile large-media config --quiet
+          sh -n deploy/whisper-deploy
+          docker run --rm -v "$PWD:/repo:ro" -w /repo \
+            rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 \
+            -shellcheck= -pyflakes= .github/workflows/delivery.yml
+      - name: Build runtime image
+        run: docker build --platform linux/amd64 --label "org.opencontainers.image.revision=${GITHUB_SHA}" -t whisper-ci:test .
+      - name: Unit and integration tests in runtime image
+        env:
+          DATABASE_URL: postgresql+psycopg2://test:test@localhost:5432/whisper_test
+          TEST_POSTGRES_URL: postgresql+psycopg2://test:test@localhost:5432/whisper_test
+        run: |
+          docker run --rm --network host -e DATABASE_URL -e TEST_POSTGRES_URL \
+            -v "$PWD/tests:/tests:ro" -v "$PWD/deploy:/deploy:ro" \
+            whisper-ci:test python -m unittest discover -s /tests -v
+          docker run --rm --network host -e DATABASE_URL whisper-ci:test alembic upgrade head
+          docker run --rm --network host -e DATABASE_URL whisper-ci:test alembic check
+          test "$(docker inspect whisper-ci:test --format '{{.Config.User}}')" = '10001:10001'
+      - name: Save tested image
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        run: docker save whisper-ci:test -o "$RUNNER_TEMP/whisper-image.tar"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        with:
+          name: tested-image
+          path: ${{ runner.temp }}/whisper-image.tar
+          retention-days: 1
+
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: tested-image
+          path: ${{ runner.temp }}
+      - name: Publish the tested image
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/partykriss/whisper_bot:sha-${GITHUB_SHA}"
+          docker load -i "$RUNNER_TEMP/whisper-image.tar"
+          docker tag whisper-ci:test "$image"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$REGISTRY_USER" --password-stdin
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          docker push "$image"
+          digest=$(docker inspect "$image" --format '{{index .RepoDigests 0}}')
+          echo "digest=${digest#*@}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    # Enable only after manual server provisioning. PRs never run on serv.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && vars.DEPLOY_ENABLED == 'true'
+    needs: publish
+    runs-on: [self-hosted, linux, x64, whisper]
+    environment: production
+    timeout-minutes: 60
+    concurrency:
+      group: whisper-production
+      cancel-in-progress: false
+    permissions: {}
+    steps:
+      - name: Invoke the installed deployment entry point
+        env:
+          RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_DIGEST: ${{ needs.publish.outputs.digest }}
+        run: sudo -n -u whisper /usr/local/bin/whisper-deploy "$RELEASE_COMMIT" "$RELEASE_DIGEST"

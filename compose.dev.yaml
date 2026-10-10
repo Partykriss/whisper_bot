@@ -6,10 +6,10 @@ services:
     environment:
       # These credentials must match your .env file
       POSTGRES_USER: whisper
-      POSTGRES_PASSWORD: whisperpass
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-whisperpass} # Development only.
       POSTGRES_DB: whisper_db
     ports:
-      - "5001:5432"
+      - "127.0.0.1:5001:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -23,7 +23,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./downloads:/code/downloads
+      - downloads:/code/downloads
       - telegram_api_data:/var/lib/telegram-bot-api:ro
 
   telegram-api:
@@ -38,5 +38,6 @@ services:
       - telegram_api_data:/var/lib/telegram-bot-api
 
 volumes:
+  downloads:
   postgres_data:
   telegram_api_data:

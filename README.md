@@ -1,6 +1,6 @@
 # Whisper Telegram Bot
 
-See [installation](docs/setup.md), [media processing and deployment](docs/media.md),
+See [production deployment](docs/deployment.md), [installation](docs/setup.md), [media processing and deployment](docs/media.md),
 and [architecture decisions](docs/adr/README.md).
 
 Telegram bot that transcribes voice/audio/video messages, media documents, direct media links and public YouTube videos with OpenAI Whisper. Results and balance reservations are stored in Postgres.
@@ -34,7 +34,7 @@ pip install -r requirements.txt
 
 ### 2) Start database
 ```bash
-docker compose up -d db
+docker compose -f compose.dev.yaml up -d db
 ```
 
 ### 3) Create `.env`
@@ -84,7 +84,7 @@ python main.py
 - `app/ui/messages.py` — formatting and warnings
 - `app/models.py` — SQLAlchemy models
 - `migrations/` — Alembic migrations
-- `docker-compose.yml` — PostgreSQL
+- `compose.dev.yaml` — PostgreSQL
 
 ## Tests
 ```bash

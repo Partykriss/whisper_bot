@@ -1,0 +1,30 @@
+{
+  "user": "whisper",
+  "repository": "git@github.com:Partykriss/whisper_bot.git",
+  "branch": "master",
+  "image": "ghcr.io/partykriss/whisper_bot",
+  "encrypted_file": "secrets/production.enc.env",
+  "state_dir": "/home/whisper/deployment",
+  "compose_file": "/etc/whisper/compose.yaml",
+  "age_key": "/home/whisper/.config/sops/age/keys.txt",
+  "ssh_key": "/home/whisper/.ssh/whisper_git",
+  "command_timeout_seconds": 600,
+  "migration_timeout_seconds": 300,
+  "startup_timeout_seconds": 90,
+  "observe_seconds": 15,
+  "compose_environment": {
+    "LOG_MAX_SIZE": "10m",
+    "LOG_MAX_FILES": "3",
+    "DB_HEALTH_INTERVAL": "5s",
+    "DB_HEALTH_TIMEOUT": "3s",
+    "DB_HEALTH_RETRIES": "12",
+    "DB_HEALTH_START_PERIOD": "10s",
+    "DB_MEMORY": "512m",
+    "DB_CPUS": "1",
+    "BOT_MEMORY": "2g",
+    "BOT_CPUS": "2",
+    "BOT_PIDS": "256",
+    "BOT_STOP_GRACE": "60s",
+    "TELEGRAM_MEMORY": "512m"
+  }
+}

@@ -74,13 +74,14 @@ quality near boundaries requires listening-based verification on real recordings
 
 ## Deployment
 
-Rebuild the bot, apply the additive migration, then restart one bot instance:
+For local development, rebuild the bot, apply the additive migration, then
+restart one bot instance. Production uses [the rootless delivery workflow](deployment.md).
 
 ```bash
-docker compose build bot
-docker compose stop bot
-docker compose run --rm bot alembic upgrade head
-docker compose up -d bot
+docker compose -f compose.dev.yaml build bot
+docker compose -f compose.dev.yaml stop bot
+docker compose -f compose.dev.yaml run --rm bot alembic upgrade head
+docker compose -f compose.dev.yaml up -d bot
 ```
 
 The new revision is `a10e6b2c4d90`. It adds a source URL, progress, and reservation
@@ -109,8 +110,8 @@ Before switching a running cloud bot, stop it and log out of the cloud API.
 The following command reads the token from the environment without displaying it:
 
 ```bash
-docker compose stop bot
-docker compose run --rm -e MEDIA_TELEGRAM_API_BASE= bot python -c '
+docker compose -f compose.dev.yaml stop bot
+docker compose -f compose.dev.yaml run --rm -e MEDIA_TELEGRAM_API_BASE= bot python -c '
 import asyncio, os
 from aiogram import Bot
 async def logout():
@@ -118,8 +119,8 @@ async def logout():
         await bot.log_out()
 asyncio.run(logout())
 '
-docker compose --profile large-media up -d telegram-api
-docker compose up -d bot
+docker compose -f compose.dev.yaml --profile large-media up -d telegram-api
+docker compose -f compose.dev.yaml up -d bot
 ```
 
 The Bot API port is internal to Docker, and storage is mounted read-only in the
@@ -132,7 +133,9 @@ Telegram; consult https://core.telegram.org/bots/api#logout.
 Run the suite inside the rebuilt image so FFmpeg integration tests execute:
 
 ```bash
-docker compose run --rm -e DATABASE_URL=sqlite:// bot python -m unittest discover -s tests -v
+docker compose -f compose.dev.yaml run --rm -e DATABASE_URL=sqlite:// \
+  -v "$PWD/tests:/tests:ro" -v "$PWD/deploy:/deploy:ro" \
+  bot python -m unittest discover -s /tests -v
 ```
 
 The PostgreSQL concurrency test needs `TEST_POSTGRES_URL` pointing to a test-capable

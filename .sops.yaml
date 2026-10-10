@@ -1,0 +1,3 @@
+creation_rules:
+  - path_regex: '(^|/)(\.env\.server|secrets/production\.enc\.env)$'
+    age: age1awqpn97nnphre96uuvkx87gct7vdupnjmn879qvk7r4x96yxm94saxezcx

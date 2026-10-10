@@ -18,7 +18,7 @@ before running the bot. Never commit credentials.
 Start only PostgreSQL first, then apply migrations and start the local bot:
 
 ```bash
-docker compose up -d db
+docker compose -f compose.dev.yaml up -d db
 # Wait until PostgreSQL is ready before applying migrations.
 .venv/bin/alembic upgrade head
 .venv/bin/python main.py
@@ -29,10 +29,10 @@ the URL in `.env` to
 `postgresql+psycopg2://whisper:whisperpass@db:5432/whisper_db`, then run:
 
 ```bash
-docker compose up -d db
+docker compose -f compose.dev.yaml up -d db
 # Wait until PostgreSQL is ready.
-docker compose run --rm bot alembic upgrade head
-docker compose up -d bot
+docker compose -f compose.dev.yaml run --rm bot alembic upgrade head
+docker compose -f compose.dev.yaml up -d bot
 ```
 
 Run one bot instance per token. Docker installs FFmpeg in the bot image;
@@ -61,7 +61,7 @@ Installation checks passed:
 - All 8 existing unit tests passed with `DATABASE_URL=sqlite://`.
 - `pip check` found no broken requirements.
 - Python compilation passed for `main.py`, `app`, `migrations`, and `tests`.
-- `docker compose config --quiet` passed.
+- `docker compose config --quiet` passed with the original development file.
 - `alembic heads` reported one head: `6a8f0c3d9b12`.
 - The diff passed whitespace checks; `.env` and `.venv` are Git-ignored.
 

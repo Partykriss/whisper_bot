@@ -1,0 +1,70 @@
+name: whisper
+
+x-app: &app
+  image: ${BOT_IMAGE:?Set an immutable bot image}
+  env_file:
+    - path: ${RUNTIME_DIR:?Set the runtime directory}/app.env
+      format: raw
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  init: true
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: ${LOG_MAX_SIZE:?}
+      max-file: ${LOG_MAX_FILES:?}
+
+services:
+  db:
+    image: postgres:15-bookworm@sha256:d4a8e1f88f475ee3e0137fa89d21ebc59f6c6ab16bf369ee92907607cc3455ae
+    restart: unless-stopped
+    env_file:
+      - path: ${RUNTIME_DIR}/db.env
+        format: raw
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: ${DB_HEALTH_INTERVAL:?}
+      timeout: ${DB_HEALTH_TIMEOUT:?}
+      retries: ${DB_HEALTH_RETRIES:?}
+      start_period: ${DB_HEALTH_START_PERIOD:?}
+    mem_limit: ${DB_MEMORY:?}
+    cpus: ${DB_CPUS:?}
+    logging: *logging
+
+  migrate:
+    <<: *app
+    profiles: [tools]
+    command: [alembic, upgrade, head]
+    depends_on:
+      db: {condition: service_healthy}
+    mem_limit: ${BOT_MEMORY:?}
+
+  bot:
+    <<: *app
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+    stop_grace_period: ${BOT_STOP_GRACE:?}
+    mem_limit: ${BOT_MEMORY:?}
+    cpus: ${BOT_CPUS:?}
+    pids_limit: ${BOT_PIDS:?}
+    volumes:
+      - downloads:/code/downloads
+      - telegram_api_data:/var/lib/telegram-bot-api:ro
+
+  telegram-api:
+    image: aiogram/telegram-bot-api@sha256:13612626f031fe154fbcd6dbdfc945b6debdb2a02b51ed02b6a5df09c46bced7
+    profiles: [large-media]
+    restart: unless-stopped
+    env_file:
+      - path: ${RUNTIME_DIR}/telegram.env
+        format: raw
+    volumes: [telegram_api_data:/var/lib/telegram-bot-api]
+    mem_limit: ${TELEGRAM_MEMORY:?}
+    logging: *logging
+
+volumes:
+  postgres_data:
+  downloads:
+  telegram_api_data:
