@@ -13,10 +13,10 @@ from app.media.sources import Source
 from app.media.process import MediaError
 from app.payments import send_plan_invoices
 from app.services.billing import expiry_warning_text
-from app.services.tasks import get_pending_task_for_user, record_payment
-from app.services.users import get_or_create_user, apply_payment_to_user, is_paid_plan, get_admin_user_ids
+from app.services.tasks import record_payment
+from app.services.users import get_or_create_user
 from app.services.media_jobs import MediaJobs
-from app.services import media_store as store
+from app.events.runtime import Runtime
 from app.ui.messages import format_duration
 
 load_dotenv()
@@ -91,44 +91,8 @@ async def pay_confirm_no_handler(callback: types.CallbackQuery):
 
 @dp.message(F.successful_payment)
 async def successful_payment_handler(message: types.Message):
-    payment = message.successful_payment
-    payload = payment.invoice_payload
-    user = get_or_create_user(message.from_user.id)
-    current_plan_name = user.plan.value if hasattr(user.plan, "value") else str(user.plan)
-    was_paid = is_paid_plan(current_plan_name)
-
-    if payload == "plan_plus":
-        record_payment(message.from_user.id, "plus", payment)
-        apply_payment_to_user(message.from_user.id, "plus")
-        if was_paid:
-            await message.answer("Payment successful. Balance increased and period extended.")
-        else:
-            await message.answer("Payment successful. Your plan was updated to Plus.")
-    elif payload == "plan_pro":
-        record_payment(message.from_user.id, "pro", payment)
-        apply_payment_to_user(message.from_user.id, "pro")
-        if was_paid:
-            await message.answer("Payment successful. Balance increased and period extended.")
-        else:
-            await message.answer("Payment successful. Your plan was updated to Pro.")
-    else:
-        record_payment(message.from_user.id, "trial", payment)
-        await message.answer("Payment successful.")
-
-    pending = get_pending_task_for_user(message.from_user.id)
-    if pending:
-        await jobs.resume(message.from_user.id, pending.id)
-
-    admin_ids = get_admin_user_ids()
-    if admin_ids:
-        text = "New payment: user {user_id}, plan {plan}, amount {amount} {currency}.".format(
-            user_id=message.from_user.id,
-            plan=payload.replace("plan_", ""),
-            amount=payment.total_amount,
-            currency=payment.currency,
-        )
-        for admin_id in admin_ids:
-            await bot.send_message(admin_id, text)
+    get_or_create_user(message.from_user.id)
+    record_payment(message.from_user.id, message.successful_payment, message.chat.id)
 
 
 @dp.message(F.text.regexp(r"https?://", mode="search"))
@@ -143,10 +107,12 @@ async def handle_media_link(message: types.Message):
 
 
 async def main():
-    # Recover reservations before accepting new requests (single bot instance).
-    store.recover_interrupted()
-    print("Bot is running...")
-    await dp.start_polling(bot)
+    try:
+        async with Runtime(bot, jobs):
+            print("Bot is running...")
+            await dp.start_polling(bot, close_bot_session=False)
+    finally:
+        await bot.session.close()
 
 
 if __name__ == "__main__":

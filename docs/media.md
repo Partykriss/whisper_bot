@@ -1,5 +1,8 @@
 # Media transcription
 
+Current execution and delivery use [database work queues](database-queues.md).
+That document supersedes the direct execution and restart-failure behavior below.
+
 ## Inputs and results
 
 Send voice messages, audio, video, video notes, or audio/video documents.

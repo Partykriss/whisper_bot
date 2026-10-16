@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Float, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Float, ForeignKey, Enum, JSON, UniqueConstraint, Index, text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.database import Base
@@ -33,6 +33,7 @@ class User(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
+    __table_args__ = (Index("ix_tasks_queue", "status", "available_at"),)
 
     id = Column(Integer, primary_key=True)
     # ForeignKey links the task to a specific telegram_id in users table
@@ -42,6 +43,13 @@ class Task(Base):
     source_url = Column(String, nullable=True)
     reserved_seconds = Column(Integer, nullable=False, default=0, server_default="0")
     progress = Column(Integer, nullable=False, default=0, server_default="0")
+    source_size = Column(BigInteger, nullable=True)
+    generation = Column(Integer, nullable=False, default=0, server_default="0")
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    lease_token = Column(String, nullable=True)
+    lease_until = Column(DateTime, nullable=True)
+    available_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    status_message_id = Column(BigInteger, nullable=True)
     file_unique_id = Column(String, unique=True, index=True)
     status = Column(String, default="pending")
     result_text = Column(String, nullable=True)
@@ -67,3 +75,27 @@ class Payment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="payments")
+
+
+class Event(Base):
+    __tablename__ = 'events'
+    id = Column(Integer, primary_key=True)
+    kind = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow, server_default=text('CURRENT_TIMESTAMP'))
+    processed_at = Column(DateTime, nullable=True, index=True)
+
+
+class Delivery(Base):
+    __tablename__ = 'notification_deliveries'
+    __table_args__ = (UniqueConstraint('event_id', 'chat_id', name='uq_delivery_recipient'),)
+    id = Column(Integer, primary_key=True)
+    event_id = Column(Integer, ForeignKey('events.id'), nullable=False)
+    chat_id = Column(BigInteger, nullable=False)
+    status = Column(String, nullable=False, default='pending', index=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    available_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    lease_token = Column(String, nullable=True)
+    lease_until = Column(DateTime, nullable=True)
+    last_error = Column(String, nullable=True)
+    message_id = Column(BigInteger, nullable=True)

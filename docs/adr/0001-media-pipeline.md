@@ -4,6 +4,9 @@
 
 Accepted, 2026-10-06.
 
+Queue execution, result delivery and restart recovery are updated by
+[ADR-0003](0003-database-work-queues.md).
+
 ## Context
 
 Telegram handlers currently pass original files directly to Whisper. Documents,

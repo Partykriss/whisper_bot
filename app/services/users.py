@@ -62,21 +62,6 @@ def subtract_user_seconds(telegram_id: int, duration_seconds: float):
         db.commit()
 
 
-def apply_payment_to_user(telegram_id: int, plan_name: str):
-    """Apply payment: add plan seconds to balance and update period."""
-    with SessionLocal() as db:
-        user = db.query(User).filter(User.telegram_id == telegram_id).with_for_update().first()
-        if not user:
-            return
-        limit_sec = get_plan_limit_seconds(plan_name)
-        current_balance = int(user.seconds or 0)
-        if limit_sec > 0:
-            user.seconds = current_balance + int(limit_sec)
-        user.plan = plan_name
-        user.paid_until = add_one_month(datetime.utcnow())
-        db.commit()
-
-
 def get_admin_user_ids() -> list[int]:
     """Return telegram_ids of admin users."""
     with SessionLocal() as db:

@@ -4,6 +4,9 @@
 
 Accepted, 2026-10-11.
 
+Queue execution, result delivery and restart recovery are updated by
+[ADR-0003](0003-database-work-queues.md).
+
 ## Context
 
 Whisper shares a home Ubuntu server with Symdex. A system-wide Docker socket

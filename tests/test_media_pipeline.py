@@ -7,7 +7,7 @@ from app.media.config import MediaSettings
 from app.media.sources import Source
 from app.media.process import MediaError
 from app.services.media_jobs import MediaJobs
-from app.services.media_store import InsufficientBalance
+from app.services.media_store import InsufficientBalance, LeaseLost
 from app.ui.results import deliver_result
 from app.services.transcription import transcribe_chunks
 
@@ -27,25 +27,25 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
              patch('app.services.media_jobs.probe_duration', AsyncMock(return_value=120)), \
              patch('app.services.media_jobs.store') as store, \
              patch('app.services.media_jobs.prepare_chunks', AsyncMock()) as prepare, \
-             patch('app.services.media_jobs.transcribe_chunks', AsyncMock()) as transcribe, \
-             patch('app.services.media_jobs.send_plan_invoices', AsyncMock()):
+             patch('app.services.media_jobs.transcribe_chunks', AsyncMock()) as transcribe:
             store.InsufficientBalance = InsufficientBalance
+            store.LeaseLost = LeaseLost
             store.reserve.side_effect = InsufficientBalance(60, 120)
             await self.jobs.process(7, 42, 1, Source(file_id='file'))
             prepare.assert_not_awaited()
             transcribe.assert_not_awaited()
-            store.wait_for_payment.assert_called_once_with(7, 1, 120)
+            store.wait_for_payment.assert_called_once_with(7, 1, 120, None)
 
     async def test_youtube_metadata_rejects_before_download(self):
         with patch('app.services.media_jobs.youtube_metadata', AsyncMock(return_value=120)), \
              patch('app.services.media_jobs.download_youtube', AsyncMock()) as download, \
-             patch('app.services.media_jobs.store') as store, \
-             patch('app.services.media_jobs.send_plan_invoices', AsyncMock()):
+             patch('app.services.media_jobs.store') as store:
             store.InsufficientBalance = InsufficientBalance
+            store.LeaseLost = LeaseLost
             store.check_balance.side_effect = InsufficientBalance(60, 120)
             await self.jobs.process(7, 42, 1, Source(url='https://youtu.be/abcdefghijk'))
             download.assert_not_awaited()
-            store.wait_for_payment.assert_called_once_with(7, 1, 120)
+            store.wait_for_payment.assert_called_once_with(7, 1, 120, None)
 
     async def test_failure_releases_and_never_finishes(self):
         with patch('app.services.media_jobs.download_telegram', AsyncMock(return_value=Path('media'))), \
@@ -53,12 +53,13 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
              patch('app.services.media_jobs.prepare_chunks', AsyncMock(side_effect=MediaError('bad audio'))), \
              patch('app.services.media_jobs.store') as store:
             store.InsufficientBalance = InsufficientBalance
+            store.LeaseLost = LeaseLost
             await self.jobs.process(7, 42, 1, Source(file_id='file'))
-            store.reserve.assert_called_once_with(7, 1, 30)
+            store.reserve.assert_called_once_with(7, 1, 30, None)
             store.finish.assert_not_called()
-            store.fail.assert_called_once_with(7, 1, 'bad audio')
+            store.fail.assert_called_once_with(7, 1, 'bad audio', None)
 
-    async def test_success_reserves_before_openai_and_delivers(self):
+    async def test_success_reserves_before_openai_and_only_persists_result(self):
         events = []
         with patch('app.services.media_jobs.download_http', AsyncMock(return_value=Path('media'))), \
              patch('app.services.media_jobs.probe_duration', AsyncMock(return_value=30)), \
@@ -66,6 +67,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
              patch('app.services.media_jobs.store') as store, \
              patch('app.services.media_jobs.transcribe_chunks', AsyncMock()) as transcribe:
             store.InsufficientBalance = InsufficientBalance
+            store.LeaseLost = LeaseLost
             store.reserve.side_effect = lambda *a: events.append('reserve')
             async def recognize(*args):
                 events.append('openai')
@@ -73,8 +75,9 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
             transcribe.side_effect = recognize
             await self.jobs.process(7, 42, 1, Source(url='https://example.com/audio.mp3'))
             self.assertEqual(events, ['reserve', 'openai'])
-            store.finish.assert_called_once_with(7, 1, 'hello')
-            self.bot.send_message.assert_any_await(42, 'hello', parse_mode=None)
+            store.finish.assert_called_once_with(7, 1, 'hello', None)
+            self.bot.send_message.assert_not_awaited()
+            self.bot.send_document.assert_not_awaited()
 
     async def test_long_result_delivered_as_utf8_document(self):
         await deliver_result(self.bot, 42, 'Привет' * 1000, self.settings)

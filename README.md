@@ -97,3 +97,5 @@ python -m unittest discover -s tests
 
 ## License
 Not specified.
+
+Database-driven processing and notification delivery: [queue architecture and operations](docs/database-queues.md).

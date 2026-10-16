@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.models import User
-from app.services import media_store as store
+from app.services import media_store as store, task_queue
 from app.media.sources import Source
 
 @unittest.skipUnless(os.getenv('TEST_POSTGRES_URL'), 'Set TEST_POSTGRES_URL for PostgreSQL concurrency checks')
@@ -28,13 +28,14 @@ class PostgreSQLReservations(unittest.TestCase):
             with sessions.begin() as db:
                 db.add(User(telegram_id=7, plan='plus', seconds=100,
                             paid_until=datetime.utcnow() + timedelta(days=1)))
-            with patch.object(store, 'SessionLocal', sessions):
+            with patch.object(store, 'SessionLocal', sessions), patch.object(task_queue, 'SessionLocal', sessions):
                 jobs = [store.claim_job(7, name, Source(file_id=name))[0] for name in ('one', 'two')]
+                claims = {item[2]: item[4] for item in (task_queue.claim(), task_queue.claim())}
                 barrier = Barrier(2)
                 def reserve(task_id):
                     barrier.wait(timeout=10)
                     try:
-                        store.reserve(7, task_id, 60)
+                        store.reserve(7, task_id, 60, claims[task_id])
                         return True
                     except store.InsufficientBalance:
                         return False
