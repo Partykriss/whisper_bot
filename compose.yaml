@@ -43,6 +43,8 @@ services:
   bot:
     <<: *app
     restart: unless-stopped
+    # The pinned Telegram API image owns media as 101:101 (dirs 750, files 640).
+    group_add: ["101"]
     depends_on:
       db: {condition: service_healthy}
     stop_grace_period: ${BOT_STOP_GRACE:?}

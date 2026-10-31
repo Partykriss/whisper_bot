@@ -181,8 +181,30 @@ inspect container logs privately; do not paste tokens or full Docker inspect.
 For optional local Telegram API, use `MEDIA_TELEGRAM_API_BASE=http://telegram-api:8081`,
 `TELEGRAM_API_ID`, and `TELEGRAM_API_HASH`. The profile is selected from validated
 secrets. The existing cloud logout prerequisite in [media.md](media.md) still
-applies; deploy never performs it automatically. Confirm that the pinned local
-API image's volume permissions allow UID 10001 to read downloaded media.
+applies; deploy never performs it automatically.
+
+The pinned local API image creates media under UID/GID 101:101, with directories
+mode 750 and media files mode 640. The bot runs as UID 10001; production Compose
+adds supplementary group 101 so it can traverse those directories and read
+media. The Telegram volume remains read-only in the bot. Without this group,
+Telegram can download a large file successfully while processing fails with
+`PermissionError`. GID 101 is part of the pinned image's storage contract, not a
+tuning parameter; recheck ownership when upgrading that image.
+
+Existing hosts must install the updated Compose file before deploying. A Git
+push alone does not replace the root-owned `/etc/whisper/compose.yaml`. After
+updating the server checkout to the reviewed commit, run as administrator:
+
+```bash
+sudo install -o root -g root -m 0644 \
+  /home/whisper/whisper_bot/compose.yaml /etc/whisper/compose.yaml
+```
+
+Then run the normal deployment to recreate the bot with the supplementary group;
+restarting an existing container does not apply new group settings. No ownership
+changes, broad chmod, or writable Telegram mount are required. The configuration
+was validated with dummy secrets using `docker compose config --quiet`; actual
+large-file processing must be verified after recreation on the server.
 
 Keep an offline backup of the age key. Failed release directories can contain
 plaintext too and must remain private. No automatic retention deletion is
