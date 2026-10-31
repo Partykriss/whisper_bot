@@ -12,7 +12,7 @@ import time
 
 # This directory and all installed files must be owned by root.
 sys.path.insert(0, '/usr/local/lib/whisper')
-from secret_config import prepare_secrets, raw_env
+from secret_config import prepare_secrets, raw_env, cleanup_secrets
 
 
 def validate_release(commit, digest):
@@ -111,7 +111,8 @@ class Deployment:
         releases = self.state / 'releases'
         releases.mkdir(exist_ok=True, mode=0o700)
         release = Path(tempfile.mkdtemp(prefix=f'{commit[:12]}-', dir=releases))
-        for name, values in [('app', app), ('db', database), ('telegram', telegram)]:
+        for name, values in [('app', app), ('db', database), ('telegram', telegram),
+                             ('cleanup', cleanup_secrets(app))]:
             private_write(release / f'{name}.env', raw_env(values))
         # Do not source decrypted data or let it control Compose interpolation.
         self.env.update(self.config['compose_environment'])
@@ -131,7 +132,7 @@ class Deployment:
         self.compose_run('up', '-d', '--wait', '--wait-timeout',
                          str(self.config['startup_timeout_seconds']), 'db')
         print('Stopping the bot; backing up database before migration', flush=True)
-        self.compose_run('stop', 'bot')
+        self.compose_run('stop', 'bot', 'telegram-cleanup')
         backup_dir = self.state / 'backups'
         backup_dir.mkdir(exist_ok=True, mode=0o700)
         backup = backup_dir / f'{release.name}.dump'
@@ -156,9 +157,9 @@ class Deployment:
                 pass
             raise
         if local_api:
-            self.compose_run('up', '-d', '--no-deps', 'telegram-api')
+            self.compose_run('up', '-d', '--no-deps', 'telegram-api', 'telegram-cleanup')
         else:
-            self.compose_run('stop', 'telegram-api')
+            self.compose_run('stop', 'telegram-api', 'telegram-cleanup')
         print('Starting bot and observing startup', flush=True)
         self.compose_run('up', '-d', '--no-deps', 'bot')
         container = self.compose_run('ps', '-q', 'bot').decode().strip()
@@ -169,8 +170,13 @@ class Deployment:
                 raise RuntimeError('Bot exited or restarted during startup observation')
             # Readiness: credentials, network and DB schema; no second polling instance.
             self.compose_run('exec', '-T', 'bot', 'python', '/code/app/deployment_probe.py')
+            if local_api:
+                cleanup_container = self.compose_run('ps', '-q', 'telegram-cleanup').decode().strip()
+                cleanup_status = json.loads(self.run('docker', 'inspect', cleanup_container))[0]
+                if not cleanup_status['State']['Running'] or cleanup_status['RestartCount'] != 0:
+                    raise RuntimeError('Telegram cleanup service exited or restarted during startup')
         except Exception:
-            self.compose_run('stop', 'bot')
+            self.compose_run('stop', 'bot', 'telegram-cleanup')
             raise
         private_write(current_path, json.dumps({'commit': commit, 'image': image,
                                                'runtime_dir': str(release), 'backup': str(backup)}, indent=2) + '\n')

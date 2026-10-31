@@ -52,6 +52,22 @@ class FakeDeployment(Deployment):
 
 
 class DeploymentTests(unittest.TestCase):
+    def test_local_api_cleanup_starts_after_migration_and_is_checked(self):
+        secrets = SECRETS + b'MEDIA_TELEGRAM_API_BASE=http://telegram-api:8081\nTELEGRAM_API_ID=123\nTELEGRAM_API_HASH=test\n'
+        with tempfile.TemporaryDirectory() as directory, patch(__name__ + '.SECRETS', secrets):
+            deploy = FakeDeployment(directory)
+            deploy.execute(COMMIT, DIGEST)
+            migrate = next(i for i, c in enumerate(deploy.calls) if 'run' in c and c[-1] == 'migrate')
+            start = next(i for i, c in enumerate(deploy.calls) if c[-5:] ==
+                         ('up', '-d', '--no-deps', 'telegram-api', 'telegram-cleanup'))
+            self.assertLess(migrate, start)
+            self.assertTrue(any(c[-3:] == ('ps', '-q', 'telegram-cleanup') for c in deploy.calls))
+            current = json.loads((Path(directory) / 'current.json').read_text())
+            env = (Path(current['runtime_dir']) / 'cleanup.env').read_text()
+            self.assertIn('DATABASE_URL=', env)
+            self.assertNotIn('BOT_TOKEN', env)
+            self.assertNotIn('OPENAI_API_KEY', env)
+
     def test_arbitrary_arguments_rejected(self):
         for commit, digest in [('master', DIGEST), (COMMIT, '--privileged'), (COMMIT + ';id', DIGEST)]:
             with self.assertRaises(ValueError):
@@ -62,7 +78,7 @@ class DeploymentTests(unittest.TestCase):
             deploy = FakeDeployment(directory)
             deploy.execute(COMMIT, DIGEST)
             calls = deploy.calls
-            stop = next(i for i, c in enumerate(calls) if c[-2:] == ('stop', 'bot'))
+            stop = next(i for i, c in enumerate(calls) if c[-3:] == ('stop', 'bot', 'telegram-cleanup'))
             backup = next(i for i, c in enumerate(calls) if 'pg_dump' in c)
             migrate = next(i for i, c in enumerate(calls) if c[-1] == 'migrate' and 'run' in c)
             start = next(i for i, c in enumerate(calls) if c[-4:] == ('up', '-d', '--no-deps', 'bot'))
@@ -107,7 +123,7 @@ class DeploymentTests(unittest.TestCase):
             with patch.object(deploy, 'compose_run', side_effect=compose):
                 with self.assertRaises(RuntimeError):
                     deploy.execute(COMMIT, DIGEST)
-            self.assertEqual(deploy.calls[-1][-2:], ('stop', 'bot'))
+            self.assertEqual(deploy.calls[-1][-3:], ('stop', 'bot', 'telegram-cleanup'))
             self.assertFalse((Path(directory) / 'current.json').exists())
 
     def test_database_rotation_rejected_before_stopping_bot(self):

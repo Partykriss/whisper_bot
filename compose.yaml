@@ -43,6 +43,8 @@ services:
   bot:
     <<: *app
     restart: unless-stopped
+    # The pinned Telegram API image owns media as 101:101 (dirs 750, files 640).
+    group_add: ["101"]
     depends_on:
       db: {condition: service_healthy}
     stop_grace_period: ${BOT_STOP_GRACE:?}
@@ -63,6 +65,25 @@ services:
     volumes: [telegram_api_data:/var/lib/telegram-bot-api]
     mem_limit: ${TELEGRAM_MEMORY:?}
     logging: *logging
+
+  telegram-cleanup:
+    <<: *app
+    profiles: [large-media]
+    restart: unless-stopped
+    # Matches the owner of media in the pinned Telegram API image.
+    user: "101:101"
+    command: [python, -m, app.cleanup]
+    env_file:
+      - path: ${RUNTIME_DIR}/cleanup.env
+        format: raw
+    depends_on:
+      db: {condition: service_healthy}
+    mem_limit: ${CLEANUP_MEMORY:?}
+    cpus: ${CLEANUP_CPUS:?}
+    pids_limit: ${BOT_PIDS:?}
+    stop_grace_period: ${BOT_STOP_GRACE:?}
+    volumes:
+      - telegram_api_data:/var/lib/telegram-bot-api
 
 volumes:
   postgres_data:

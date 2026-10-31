@@ -7,6 +7,7 @@ from app.events.listener import listen
 from app.events.leases import with_lease
 from app.events import store, delivery
 from app.services import task_queue
+from app.cleanup.worker import CleanupWorker
 
 
 class Runtime:
@@ -14,8 +15,10 @@ class Runtime:
         self.bot, self.jobs, self.settings = bot, jobs, settings
         self.wake = asyncio.Event()
         self.workers = []
+        self.cleanup = CleanupWorker('workspace', jobs.settings)
 
     async def __aenter__(self):
+        await self.cleanup.__aenter__()
         self.workers = [asyncio.create_task(listen(self.wake, self.settings)),
                         asyncio.create_task(self.loop(self.fanout))]
         self.workers += [asyncio.create_task(self.loop(self.media))
@@ -28,6 +31,7 @@ class Runtime:
         for worker in self.workers:
             worker.cancel()
         await asyncio.gather(*self.workers, return_exceptions=True)
+        await self.cleanup.__aexit__(*args)
 
     async def loop(self, operation):
         while True:

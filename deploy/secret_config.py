@@ -41,3 +41,9 @@ def prepare_secrets(plaintext):
 def raw_env(values):
     # Compose format: raw preserves dollar signs, quotes and shell metacharacters.
     return ''.join(f'{key}={value}\n' for key, value in sorted(values.items()))
+
+
+def cleanup_secrets(app):
+    """The cleanup service needs DB access and paths, never provider credentials."""
+    return {key: value for key, value in app.items()
+            if key in ('DATABASE_URL', 'MEDIA_TELEGRAM_LOCAL_ROOT') or key.startswith('CLEANUP_')}

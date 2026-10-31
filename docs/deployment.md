@@ -1,5 +1,12 @@
 # Production deployment on serv
 
+The media-cleanup release requires coordinated host-file updates and migration
+`d37e8f901abc`; see [cleanup deployment and verification](media-cleanup.md#deployment).
+It adds a `telegram-cleanup` service using the same app image as UID 101 and a
+dedicated `cleanup.env` without provider credentials. Update the installed
+Compose, config, deployment module and secret-config module together before
+deploying. A push alone does not install these root-owned host files.
+
 This replaces `deploy/deploy.sh` (rsync/scp, system Docker, start-before-migrate).
 The administrator runs all server commands manually. Application behavior and
 database schema are unchanged. Local development uses `compose.dev.yaml`;
@@ -137,6 +144,22 @@ account and use a credential helper if available. Do not log in as the runner.
 
 ## Secrets and compatibility
 
+Prepare the complete production configuration in the ignored `.env.server`, then
+run `./deploy/encrypt-secrets.sh` from the checkout (or invoke its absolute path
+from any directory). No arguments are accepted. SOPS uses the repository's
+`.sops.yaml` public recipient; encryption does not require the private age key.
+This replaces the entire `secrets/production.enc.env`, not individual entries.
+The command leaves plaintext untouched, suppresses SOPS diagnostics, and replaces
+the destination atomically only after successful encryption. It performs no Git
+operations. Review and commit only the encrypted result; never force-add dotenv
+files. A master push can deploy immediately, so complete the cloud logout step
+before delivering secrets that enable the local Telegram API.
+
+Validation: a temporary-fixture test covers invocation outside the checkout,
+successful replacement, private output permissions, and preservation/cleanup
+after a failed encryption without exposing diagnostic secrets. It substitutes
+SOPS; it does not validate production credentials or decrypt the real file.
+
 `secrets/production.enc.env` contains SOPS ciphertext only. The age public
 recipient is in `.sops.yaml`; the private key never enters Git or the image.
 Server-side decryption has already been manually verified. The deployment
@@ -165,13 +188,79 @@ inspect container logs privately; do not paste tokens or full Docker inspect.
 For optional local Telegram API, use `MEDIA_TELEGRAM_API_BASE=http://telegram-api:8081`,
 `TELEGRAM_API_ID`, and `TELEGRAM_API_HASH`. The profile is selected from validated
 secrets. The existing cloud logout prerequisite in [media.md](media.md) still
-applies; deploy never performs it automatically. Confirm that the pinned local
-API image's volume permissions allow UID 10001 to read downloaded media.
+applies; deploy never performs it automatically.
+
+The pinned local API image creates media under UID/GID 101:101, with directories
+mode 750 and media files mode 640. The bot runs as UID 10001; production Compose
+adds supplementary group 101 so it can traverse those directories and read
+media. The Telegram volume remains read-only in the bot. Without this group,
+Telegram can download a large file successfully while processing fails with
+`PermissionError`. GID 101 is part of the pinned image's storage contract, not a
+tuning parameter; recheck ownership when upgrading that image.
+
+Existing hosts must install the updated Compose file before deploying. A Git
+push alone does not replace the root-owned `/etc/whisper/compose.yaml`. After
+updating the server checkout to the reviewed commit, run as administrator:
+
+```bash
+sudo install -o root -g root -m 0644 \
+  /home/whisper/whisper_bot/compose.yaml /etc/whisper/compose.yaml
+```
+
+Then run the normal deployment to recreate the bot with the supplementary group;
+restarting an existing container does not apply new group settings. No ownership
+changes, broad chmod, or writable Telegram mount are required. The configuration
+was validated with dummy secrets using `docker compose config --quiet`; actual
+large-file processing must be verified after recreation on the server.
 
 Keep an offline backup of the age key. Failed release directories can contain
 plaintext too and must remain private. No automatic retention deletion is
 performed; prune reviewed obsolete releases/backups manually and retain the
 current runtime directory referenced by current.json.
+
+### Switching from cloud to local Telegram API
+
+Prepare `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and
+`MEDIA_TELEGRAM_API_BASE=http://telegram-api:8081` in the complete `.env.server`,
+then run `./deploy/encrypt-secrets.sh`. Do not deliver that change to master until
+cloud logout is complete: master pushes can deploy automatically.
+
+On the server, use a reviewed checkout containing the maintenance command. Wait
+for active processing to finish, ensure no deployment is running, then run:
+
+```bash
+sudo -iu whisper
+python3 /home/whisper/whisper_bot/deploy/telegram-cloud-logout.py
+```
+
+The command takes no arguments. It reads the installed `/etc/whisper/config.json`
+for the application account, state directory and command timeout, and reads the
+current release's `current.json` and `app.env`. It uses the rootless Docker
+context and the deployment lock. Before stopping anything, it checks runtime
+files, the cloud configuration, rootless mode, exactly one running Whisper bot,
+and that its image matches the locally available current-release image.
+
+After stopping the bot, a disposable container calls cloud `logOut` using the
+existing token. Only a positive Telegram response is accepted. Diagnostics are
+suppressed to avoid leaking credentials. Success leaves the bot stopped;
+deliver the encrypted configuration through the normal master workflow next.
+Deployment starts the local API and the bot. Verify both containers, send a short
+recording, then a video larger than 20 MB to verify shared-storage access.
+
+This is an explicit migration operation, never an automatic deploy step. Telegram
+allows local login immediately after logout but blocks cloud login for ten
+minutes. The bot is unavailable between stopping and successful deployment.
+If stopping fails, inspect the bot's state before proceeding. If logout fails,
+the bot remains stopped and the cloud logout outcome may be unknown; do not
+blindly restart or retry. A timed-out Docker helper may still be running: inspect
+it before deciding whether to remove it or proceed. The command never starts the
+bot automatically and does not modify runtime files or the encrypted secrets.
+
+Validation: mocked Docker tests cover successful ordering, missing runtime files,
+absent/duplicate bots, unavailable/mismatched images, stop and logout failures,
+and suppression of secret diagnostics. A helper test rejects a false Telegram
+response. These checks do not contact production or prove live Telegram logout,
+local API readiness, or shared-volume permissions.
 
 ## First release and verification
 

@@ -25,6 +25,8 @@
     "BOT_CPUS": "2",
     "BOT_PIDS": "256",
     "BOT_STOP_GRACE": "60s",
-    "TELEGRAM_MEMORY": "512m"
+    "TELEGRAM_MEMORY": "512m",
+    "CLEANUP_MEMORY": "256m",
+    "CLEANUP_CPUS": "0.5"
   }
 }

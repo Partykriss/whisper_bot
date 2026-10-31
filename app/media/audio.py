@@ -22,7 +22,7 @@ async def probe_duration(path, settings):
         raise MediaError('Recording exceeds the configured duration limit.')
     return duration
 
-async def prepare_chunks(path, directory, settings):
+async def prepare_audio_chunks(path, directory, settings):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     await run_process('ffmpeg', '-nostdin', '-v', 'error', '-y',

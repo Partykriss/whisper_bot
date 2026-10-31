@@ -18,15 +18,23 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(edit_text=AsyncMock())),
                                    send_document=AsyncMock())
         self.jobs = MediaJobs(self.bot, Mock(), self.settings)
+        # These tests isolate billing/orchestration. Real file lifecycle and DB
+        # behavior are exercised in test_media_cleanup_postgres.py.
+        self.files_patch = patch('app.services.media_jobs.MediaFiles')
+        files = self.files_patch.start().return_value.__aenter__.return_value
+        files.directory = Path(self.temp.name)
+        for name in ('ready', 'register_audio_chunks', 'delete_workspace_source', 'delete_audio_chunk'):
+            setattr(files, name, AsyncMock())
 
     async def asyncTearDown(self):
+        self.files_patch.stop()
         self.temp.cleanup()
 
     async def test_actual_duration_rejects_before_preparation_or_openai(self):
         with patch('app.services.media_jobs.download_telegram', AsyncMock(return_value=Path('media'))), \
              patch('app.services.media_jobs.probe_duration', AsyncMock(return_value=120)), \
              patch('app.services.media_jobs.store') as store, \
-             patch('app.services.media_jobs.prepare_chunks', AsyncMock()) as prepare, \
+             patch('app.services.media_jobs.prepare_audio_chunks', AsyncMock()) as prepare, \
              patch('app.services.media_jobs.transcribe_chunks', AsyncMock()) as transcribe:
             store.InsufficientBalance = InsufficientBalance
             store.LeaseLost = LeaseLost
@@ -50,7 +58,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
     async def test_failure_releases_and_never_finishes(self):
         with patch('app.services.media_jobs.download_telegram', AsyncMock(return_value=Path('media'))), \
              patch('app.services.media_jobs.probe_duration', AsyncMock(return_value=30)), \
-             patch('app.services.media_jobs.prepare_chunks', AsyncMock(side_effect=MediaError('bad audio'))), \
+             patch('app.services.media_jobs.prepare_audio_chunks', AsyncMock(side_effect=MediaError('bad audio'))), \
              patch('app.services.media_jobs.store') as store:
             store.InsufficientBalance = InsufficientBalance
             store.LeaseLost = LeaseLost
@@ -63,13 +71,13 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         events = []
         with patch('app.services.media_jobs.download_http', AsyncMock(return_value=Path('media'))), \
              patch('app.services.media_jobs.probe_duration', AsyncMock(return_value=30)), \
-             patch('app.services.media_jobs.prepare_chunks', AsyncMock(return_value=[Path('chunk')])), \
+             patch('app.services.media_jobs.prepare_audio_chunks', AsyncMock(return_value=[Path('chunk')])), \
              patch('app.services.media_jobs.store') as store, \
              patch('app.services.media_jobs.transcribe_chunks', AsyncMock()) as transcribe:
             store.InsufficientBalance = InsufficientBalance
             store.LeaseLost = LeaseLost
             store.reserve.side_effect = lambda *a: events.append('reserve')
-            async def recognize(*args):
+            async def recognize(*args, **kwargs):
                 events.append('openai')
                 return 'hello'
             transcribe.side_effect = recognize

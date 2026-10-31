@@ -2,6 +2,8 @@
 
 Current execution and delivery use [database work queues](database-queues.md).
 That document supersedes the direct execution and restart-failure behavior below.
+File retention and deletion now follow [durable asynchronous cleanup](media-cleanup.md),
+including early release of Telegram cache, source copies and audio chunks.
 
 ## Inputs and results
 

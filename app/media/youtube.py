@@ -19,7 +19,7 @@ def download(url, directory, max_bytes, timeout):
             raise DownloadError('Configured source size limit exceeded')
     options = {
         'format': 'bestaudio', 'noplaylist': True, 'cachedir': False,
-        'outtmpl': str(Path(directory) / 'source.%(ext)s'),
+        'outtmpl': str(Path(directory) / 'source.bin'),
         'max_filesize': max_bytes, 'socket_timeout': timeout,
         'progress_hooks': [enforce_limit], 'logger': QuietLogger(),
         'quiet': True, 'no_warnings': True, 'noprogress': True,
