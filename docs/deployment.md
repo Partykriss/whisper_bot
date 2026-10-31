@@ -189,6 +189,50 @@ plaintext too and must remain private. No automatic retention deletion is
 performed; prune reviewed obsolete releases/backups manually and retain the
 current runtime directory referenced by current.json.
 
+### Switching from cloud to local Telegram API
+
+Prepare `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and
+`MEDIA_TELEGRAM_API_BASE=http://telegram-api:8081` in the complete `.env.server`,
+then run `./deploy/encrypt-secrets.sh`. Do not deliver that change to master until
+cloud logout is complete: master pushes can deploy automatically.
+
+On the server, use a reviewed checkout containing the maintenance command. Wait
+for active processing to finish, ensure no deployment is running, then run:
+
+```bash
+sudo -iu whisper
+python3 /home/whisper/whisper_bot/deploy/telegram-cloud-logout.py
+```
+
+The command takes no arguments. It reads the installed `/etc/whisper/config.json`
+for the application account, state directory and command timeout, and reads the
+current release's `current.json` and `app.env`. It uses the rootless Docker
+context and the deployment lock. Before stopping anything, it checks runtime
+files, the cloud configuration, rootless mode, exactly one running Whisper bot,
+and that its image matches the locally available current-release image.
+
+After stopping the bot, a disposable container calls cloud `logOut` using the
+existing token. Only a positive Telegram response is accepted. Diagnostics are
+suppressed to avoid leaking credentials. Success leaves the bot stopped;
+deliver the encrypted configuration through the normal master workflow next.
+Deployment starts the local API and the bot. Verify both containers, send a short
+recording, then a video larger than 20 MB to verify shared-storage access.
+
+This is an explicit migration operation, never an automatic deploy step. Telegram
+allows local login immediately after logout but blocks cloud login for ten
+minutes. The bot is unavailable between stopping and successful deployment.
+If stopping fails, inspect the bot's state before proceeding. If logout fails,
+the bot remains stopped and the cloud logout outcome may be unknown; do not
+blindly restart or retry. A timed-out Docker helper may still be running: inspect
+it before deciding whether to remove it or proceed. The command never starts the
+bot automatically and does not modify runtime files or the encrypted secrets.
+
+Validation: mocked Docker tests cover successful ordering, missing runtime files,
+absent/duplicate bots, unavailable/mismatched images, stop and logout failures,
+and suppression of secret diagnostics. A helper test rejects a false Telegram
+response. These checks do not contact production or prove live Telegram logout,
+local API readiness, or shared-volume permissions.
+
 ## First release and verification
 
 1. Push the reviewed commit. Tests and publication run; deployment remains off.
