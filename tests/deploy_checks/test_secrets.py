@@ -3,13 +3,21 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'deploy'))
-from secret_config import prepare_secrets, raw_env
+from secret_config import prepare_secrets, raw_env, cleanup_secrets
 
 
 BASE = 'BOT_TOKEN=123:test\nOPENAI_API_KEY=test\nDATABASE_URL=postgresql+psycopg2://whisper:p%24%23%22@db:5432/whisper_db\n'
 
 
 class SecretConfigTests(unittest.TestCase):
+    def test_cleanup_service_does_not_receive_provider_credentials(self):
+        app, _, _, _ = prepare_secrets(BASE + 'CLEANUP_RETRY_SECONDS=7\n')
+        cleanup = cleanup_secrets(app)
+        self.assertNotIn('BOT_TOKEN', cleanup)
+        self.assertNotIn('OPENAI_API_KEY', cleanup)
+        self.assertEqual(cleanup['DATABASE_URL'], app['DATABASE_URL'])
+        self.assertEqual(cleanup['CLEANUP_RETRY_SECONDS'], '7')
+
     def test_literal_values_and_database_credentials(self):
         app, database, telegram, local = prepare_secrets(BASE + "CUSTOM='${HOME} $(touch /tmp/never) # value'\n")
         self.assertEqual(app['CUSTOM'], '${HOME} $(touch /tmp/never) # value')

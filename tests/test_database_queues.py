@@ -20,6 +20,7 @@ from app.events.config import QueueSettings
 from app.media.config import MediaSettings
 from app.media.sources import Source
 from app.services import media_store, task_queue, tasks
+from app.cleanup import store as cleanup_store
 
 
 @unittest.skipUnless(os.getenv('TEST_POSTGRES_URL'), 'Set TEST_POSTGRES_URL for database queue integration')
@@ -55,7 +56,7 @@ class DatabaseQueues(unittest.TestCase):
             for statement in statements:
                 conn.execute(text(statement))
         self.stack = ExitStack()
-        for module in (events, media_store, task_queue, tasks):
+        for module in (events, media_store, task_queue, tasks, cleanup_store):
             self.stack.enter_context(patch.object(module, 'SessionLocal', self.sessions))
         with self.sessions.begin() as db:
             db.add_all([User(telegram_id=7, plan='plus', seconds=100,
@@ -304,9 +305,18 @@ class DatabaseQueues(unittest.TestCase):
                 return SimpleNamespace(message_id=123)
             self.bot.send_message.side_effect = send
             jobs = MediaJobs(self.bot, object(), MediaSettings(downloads_dir=directory, concurrent_jobs=1))
-            with patch('app.services.media_jobs.download_telegram', AsyncMock(return_value=Path('media'))), \
+            async def download(bot, source, directory, settings, files):
+                path = directory / 'source.bin'
+                path.write_bytes(b'media')
+                return path
+            async def prepare(source, directory, settings):
+                directory.mkdir()
+                path = directory / '000000.mp3'
+                path.write_bytes(b'audio')
+                return [path]
+            with patch('app.services.media_jobs.download_telegram', side_effect=download), \
                  patch('app.services.media_jobs.probe_duration', AsyncMock(return_value=30)), \
-                 patch('app.services.media_jobs.prepare_chunks', AsyncMock(return_value=[Path('chunk')])), \
+                 patch('app.services.media_jobs.prepare_audio_chunks', side_effect=prepare), \
                  patch('app.services.media_jobs.transcribe_chunks', AsyncMock(return_value='runtime transcript')), \
                  patch.object(listener, 'engine', self.engine):
                 await jobs.submit(7, 7, Source(file_id='file'), 'runtime')

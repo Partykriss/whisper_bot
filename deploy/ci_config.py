@@ -10,6 +10,7 @@ if __name__ == '__main__':
     (directory / 'app.env').write_text('BOT_TOKEN=123456:TEST\nOPENAI_API_KEY=test\nDATABASE_URL=postgresql+psycopg2://test:test@db/test\n')
     (directory / 'db.env').write_text('POSTGRES_USER=test\nPOSTGRES_PASSWORD=test\nPOSTGRES_DB=test\n')
     (directory / 'telegram.env').write_text('TELEGRAM_LOCAL=1\n')
+    (directory / 'cleanup.env').write_text('DATABASE_URL=postgresql+psycopg2://test:test@db/test\n')
     config = json.loads((Path(__file__).parent / 'config.json').read_text())
     for key, value in config['compose_environment'].items():
         print(f'{key}={value}')

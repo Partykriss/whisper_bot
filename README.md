@@ -10,6 +10,7 @@ Telegram bot that transcribes voice/audio/video messages, media documents, direc
 - Direct HTTP(S) media links and public YouTube audio downloads
 - FFmpeg audio extraction and chunking for large recordings
 - Optional local Telegram Bot API for files larger than 20 MB
+- [Durable background media cleanup](docs/media-cleanup.md) after each processing stage
 - Atomic duration reservations before transcription; long results as text files
 - OpenAI Whisper transcription (`whisper-1`)
 - Postgres cache + Alembic migrations
@@ -92,7 +93,7 @@ python -m unittest discover -s tests
 ```
 
 ## Notes
-- Files in `downloads/` are temporary and removed after processing.
+- Managed media is released as soon as its next representation is ready; deletion is tracked and retried in PostgreSQL.
 - Internet access is required for Telegram and OpenAI APIs.
 
 ## License

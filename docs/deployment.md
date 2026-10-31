@@ -1,5 +1,12 @@
 # Production deployment on serv
 
+The media-cleanup release requires coordinated host-file updates and migration
+`d37e8f901abc`; see [cleanup deployment and verification](media-cleanup.md#deployment).
+It adds a `telegram-cleanup` service using the same app image as UID 101 and a
+dedicated `cleanup.env` without provider credentials. Update the installed
+Compose, config, deployment module and secret-config module together before
+deploying. A push alone does not install these root-owned host files.
+
 This replaces `deploy/deploy.sh` (rsync/scp, system Docker, start-before-migrate).
 The administrator runs all server commands manually. Application behavior and
 database schema are unchanged. Local development uses `compose.dev.yaml`;

@@ -28,7 +28,8 @@ def claim(settings=SETTINGS):
             task.lease_until = now + timedelta(seconds=settings.lease_seconds)
             return (user_id, task.chat_id, task.id,
                     Source(file_id=task.file_id, url=task.source_url,
-                           duration=task.duration_seconds, size=task.source_size), task.lease_token)
+                           duration=task.duration_seconds, size=task.source_size,
+                           identity=task.source_identity), task.lease_token)
     return None
 
 

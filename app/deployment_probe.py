@@ -15,6 +15,8 @@ async def probe():
         with engine.connect() as connection:
             connection.execute(text('SELECT version_num FROM alembic_version')).one()
             connection.execute(text('SELECT id FROM users LIMIT 0'))
+            connection.execute(text('SELECT id FROM media_files LIMIT 0'))
+            connection.execute(text('SELECT started_at FROM media_cleanup_epoch WHERE id = 1')).one()
     finally:
         engine.dispose()
     base = os.environ.get('MEDIA_TELEGRAM_API_BASE')

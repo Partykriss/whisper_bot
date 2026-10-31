@@ -81,12 +81,19 @@ class TelegramDownloadTests(unittest.IsolatedAsyncioTestCase):
                                     directory, MediaSettings())
         bot.get_file.assert_not_awaited()
 
-    async def test_local_api_copies_large_file_and_preserves_api_cache(self):
+    async def test_local_api_copies_large_file_then_schedules_cache_deletion(self):
         import tempfile
         from pathlib import Path
         from types import SimpleNamespace
         from app.media.sources import download_telegram, Source
         from app.media.config import MediaSettings
+        from contextlib import asynccontextmanager
+        @asynccontextmanager
+        async def acquisition():
+            yield
+        lifecycle = SimpleNamespace(telegram_acquisition=acquisition,
+                                    register_telegram_source=AsyncMock(return_value=1),
+                                    delete_telegram_cached_source=AsyncMock())
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / 'api'
             root.mkdir()
@@ -100,7 +107,9 @@ class TelegramDownloadTests(unittest.IsolatedAsyncioTestCase):
             settings = MediaSettings(telegram_api_base='http://telegram-api:8081',
                                      telegram_local_root=str(root))
             target = await download_telegram(bot, Source(file_id='file', size=21_000_000),
-                                             downloads, settings)
+                                             downloads, settings, lifecycle)
             self.assertEqual(target.stat().st_size, 21_000_000)
             self.assertTrue(cached.is_file())
             bot.download_file.assert_not_awaited()
+            lifecycle.register_telegram_source.assert_awaited_once_with(cached)
+            lifecycle.delete_telegram_cached_source.assert_awaited_once_with(1)

@@ -12,6 +12,7 @@ from urllib.parse import urlsplit, parse_qs, urljoin
 import aiohttp
 from app.media.config import TELEGRAM_CLOUD_MAX_BYTES
 from app.media.process import MediaError, run_process
+from app.cleanup.async_io import file_thread
 
 @dataclass(frozen=True)
 class Source:
@@ -19,6 +20,7 @@ class Source:
     url: str | None = None
     duration: float | None = None
     size: int | None = None
+    identity: str | None = None
 
 
 def validate_url(url):
@@ -122,23 +124,41 @@ async def download_http(url, directory, settings):
                 return target
     raise MediaError('Too many media link redirects.')
 
-async def download_telegram(bot, source, directory, settings):
+async def download_telegram(bot, source, directory, settings, lifecycle=None):
     limit = settings.max_source_bytes if settings.telegram_api_base else min(
         settings.max_source_bytes, TELEGRAM_CLOUD_MAX_BYTES)
     if source.size and source.size > limit:
         raise MediaError('File is too large. Large Telegram files require the local Bot API server.')
-    file = await bot.get_file(source.file_id)
-    if file.file_size and file.file_size > limit:
+    if settings.telegram_api_base:
+        if lifecycle is None:
+            raise ValueError('Local Telegram downloads require durable file ownership')
+        async with lifecycle.telegram_acquisition():
+            return await _download_telegram(bot, source, directory, settings, limit, lifecycle)
+    return await _download_telegram(bot, source, directory, settings, limit, lifecycle)
+
+
+def copy_source_to_workspace(source, target):
+    shutil.copyfile(source, target)
+    # copyfile closes both descriptors before returning. Reject a partial/change.
+    if target.stat().st_size != source.stat().st_size:
+        raise MediaError('Telegram file changed while copying. Send it again to retry.')
+
+
+async def _download_telegram(bot, source, directory, settings, limit, lifecycle):
+    file = await bot.get_file(source.file_id, request_timeout=settings.download_timeout_seconds)
+    if not settings.telegram_api_base and file.file_size and file.file_size > limit:
         raise MediaError('File exceeds the Telegram download or configured size limit.')
     target = Path(directory) / 'source.bin'
     if settings.telegram_api_base:
-        root = Path(settings.telegram_local_root).resolve()
-        local = Path(file.file_path).resolve()
+        root = Path(settings.telegram_local_root).absolute()
+        local = Path(file.file_path).absolute()
         if not local.is_relative_to(root) or not local.is_file():
             raise MediaError('Local Telegram file storage is not mounted correctly.')
+        cached = await lifecycle.register_telegram_source(local)
         if local.stat().st_size > limit:
             raise MediaError('Source exceeds the configured file size limit.')
-        await asyncio.to_thread(shutil.copyfile, local, target)
+        await file_thread(copy_source_to_workspace, local, target)
+        await lifecycle.delete_telegram_cached_source(cached)
     else:
         await bot.download_file(file.file_path, target, timeout=settings.download_timeout_seconds)
     if target.stat().st_size > limit:

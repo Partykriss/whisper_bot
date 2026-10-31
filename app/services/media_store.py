@@ -63,6 +63,7 @@ def claim_job(user_id, key, source, chat_id=None):
             db.add(task)
         task.file_id = source.file_id
         task.source_url = source.url
+        task.source_identity = source.identity
         task.duration_seconds = source.duration
         task.chat_id = chat_id
         task.source_size = source.size

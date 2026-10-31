@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from app.media.config import MediaSettings
 from app.media.process import MediaError, run_process
-from app.media.audio import probe_duration, prepare_chunks
+from app.media.audio import probe_duration, prepare_audio_chunks
 
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'), 'FFmpeg integration requires Docker or local FFmpeg')
 class AudioTests(unittest.IsolatedAsyncioTestCase):
@@ -18,12 +18,12 @@ class AudioTests(unittest.IsolatedAsyncioTestCase):
                               '-t', '3', '-c:v', 'mpeg4', '-c:a', 'aac', source, timeout=30)
             duration = await probe_duration(source, settings)
             self.assertAlmostEqual(duration, 3, delta=0.2)
-            chunks = await prepare_chunks(source, Path(directory) / 'chunks', settings)
+            chunks = await prepare_audio_chunks(source, Path(directory) / 'chunks', settings)
             self.assertGreaterEqual(len(chunks), 3)
             for chunk in chunks:
                 self.assertLessEqual(chunk.stat().st_size, settings.upload_max_bytes)
             with self.assertRaises(MediaError):
-                await prepare_chunks(source, Path(directory) / 'tiny', replace(settings, upload_max_bytes=1))
+                await prepare_audio_chunks(source, Path(directory) / 'tiny', replace(settings, upload_max_bytes=1))
             with self.assertRaises(MediaError):
                 await probe_duration(source, replace(settings, max_duration_seconds=1))
 
@@ -44,6 +44,6 @@ class AudioTests(unittest.IsolatedAsyncioTestCase):
                               '-ac', '2', '-t', '40', source, timeout=30)
             self.assertGreater(source.stat().st_size, settings.upload_max_bytes)
             await probe_duration(source, settings)
-            chunks = await prepare_chunks(source, Path(directory) / 'chunks', settings)
+            chunks = await prepare_audio_chunks(source, Path(directory) / 'chunks', settings)
             self.assertGreaterEqual(len(chunks), 4)
             self.assertTrue(all(p.stat().st_size <= settings.upload_max_bytes for p in chunks))

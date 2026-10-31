@@ -41,6 +41,7 @@ class Task(Base):
     chat_id = Column(BigInteger, index=True, nullable=True)
     file_id = Column(String, nullable=True)
     source_url = Column(String, nullable=True)
+    source_identity = Column(String, nullable=True)
     reserved_seconds = Column(Integer, nullable=False, default=0, server_default="0")
     progress = Column(Integer, nullable=False, default=0, server_default="0")
     source_size = Column(BigInteger, nullable=True)
@@ -99,3 +100,48 @@ class Delivery(Base):
     lease_until = Column(DateTime, nullable=True)
     last_error = Column(String, nullable=True)
     message_id = Column(BigInteger, nullable=True)
+
+
+class MediaAttempt(Base):
+    __tablename__ = 'media_attempts'
+    id = Column(String, primary_key=True)
+    task_id = Column(Integer, ForeignKey('tasks.id'), nullable=False, index=True)
+    task_token = Column(String, nullable=False)
+    directory = Column(String, nullable=False, unique=True)
+    source_key = Column(String, nullable=False)
+    state = Column(String, nullable=False, default='active')
+    telegram_acquiring = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MediaFile(Base):
+    __tablename__ = 'media_files'
+    __table_args__ = (UniqueConstraint('path', 'generation', name='uq_media_file_generation'),
+                      Index('ix_media_files_cleanup', 'scope', 'state', 'available_at'))
+    id = Column(Integer, primary_key=True)
+    scope = Column(String, nullable=False)  # workspace or telegram
+    kind = Column(String, nullable=False)
+    path = Column(String, nullable=False)
+    generation = Column(String, nullable=False)
+    fingerprint = Column(String, nullable=True)
+    state = Column(String, nullable=False, default='creating')
+    attempts = Column(Integer, nullable=False, default=0)
+    available_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    lease_token = Column(String, nullable=True)
+    lease_until = Column(DateTime, nullable=True)
+    last_error = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+
+class MediaFileUse(Base):
+    __tablename__ = 'media_file_uses'
+    file_id = Column(Integer, ForeignKey('media_files.id'), primary_key=True)
+    attempt_id = Column(String, ForeignKey('media_attempts.id'), primary_key=True)
+    released_at = Column(DateTime, nullable=True)
+
+
+class MediaCleanupEpoch(Base):
+    __tablename__ = 'media_cleanup_epoch'
+    id = Column(Integer, primary_key=True)
+    started_at = Column(DateTime, nullable=False, default=datetime.utcnow)
