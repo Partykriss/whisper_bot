@@ -137,6 +137,22 @@ account and use a credential helper if available. Do not log in as the runner.
 
 ## Secrets and compatibility
 
+Prepare the complete production configuration in the ignored `.env.server`, then
+run `./deploy/encrypt-secrets.sh` from the checkout (or invoke its absolute path
+from any directory). No arguments are accepted. SOPS uses the repository's
+`.sops.yaml` public recipient; encryption does not require the private age key.
+This replaces the entire `secrets/production.enc.env`, not individual entries.
+The command leaves plaintext untouched, suppresses SOPS diagnostics, and replaces
+the destination atomically only after successful encryption. It performs no Git
+operations. Review and commit only the encrypted result; never force-add dotenv
+files. A master push can deploy immediately, so complete the cloud logout step
+before delivering secrets that enable the local Telegram API.
+
+Validation: a temporary-fixture test covers invocation outside the checkout,
+successful replacement, private output permissions, and preservation/cleanup
+after a failed encryption without exposing diagnostic secrets. It substitutes
+SOPS; it does not validate production credentials or decrypt the real file.
+
 `secrets/production.enc.env` contains SOPS ciphertext only. The age public
 recipient is in `.sops.yaml`; the private key never enters Git or the image.
 Server-side decryption has already been manually verified. The deployment
